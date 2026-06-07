@@ -22,30 +22,31 @@ class OllamaManager:
             except:
                 time.sleep(2)
 
-        # GGUFのダウンロード（Colab回線を利用）
         if not os.path.exists(self.gguf_path):
             print(f"[Ollama] GGUFモデルをダウンロード中... (高速URL: {self.gguf_url})")
             subprocess.run(["wget", "-O", self.gguf_path, self.gguf_url], check=True)
 
-        # Modelfileを動的生成
+        # 最も確実かつ、ライブラリのバージョン変更に強い「コマンドライン経由」でModelfileをインポートします
         modelfile_content = f"""
 FROM {self.gguf_path}
 TEMPLATE \"\"\"{{{{ if .System }}}}<|im_start|>system
 {{{{ .System }}}}<|im_end|>
 {{{{ end }}}}{{{{ if .Prompt }}}}<|im_start|>user
 {{{{ .Prompt }}}}<|im_end|>
-{{{{ end }}}}<|im_start|>assistant
+{{..end}}}}<|im_start|>assistant
 {{{{ .Response }}}}<|im_end|>\"\"\"
 PARAMETER stop "<|im_start|>"
 PARAMETER stop "<|im_end|>"
 """
-        # カスタムモデルの作成（すでに存在していれば上書き・高速にスキップされます）
+        with open("/content/Modelfile_temp", "w") as f:
+            f.write(modelfile_content)
+
         print(f"[Ollama] カスタムモデル '{self.model_name}' を登録中...")
-        ollama.create(model=self.model_name, modelfile=modelfile_content)
+        # ライブラリのバグを回避するため、確実な subprocess 呼び出しに切り替え
+        subprocess.run(["ollama", "create", self.model_name, "-f", "/content/Modelfile_temp"], check=True)
         print(f"[Ollama] '{self.model_name}' のインポートが完了しました。")
 
     def generate(self, prompt: str) -> str:
-        """調合されたプロンプトをモデルに送り、生成結果を取得する"""
         try:
             response = ollama.generate(model=self.model_name, prompt=prompt)
             return response['response']
