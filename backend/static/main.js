@@ -11,7 +11,7 @@ const logOutput = document.getElementById('log-output');
 
 generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
-    generateBtn.innerText = "⚡ 肉付け中（ローカルLLM推論中）...";
+    generateBtn.innerText = "⚡ 思考中（ファーストトークン待機）...";
     
     const checkedCheckboxes = document.querySelectorAll('#asset-manager input[type="checkbox"]:checked');
     const selected_assets = Array.from(checkedCheckboxes).map(cb => cb.value);
@@ -36,14 +36,45 @@ generateBtn.addEventListener('click', async () => {
 
         if (!response.ok) throw new Error(await response.text());
 
-        const data = await response.json();
-        
+        // ストリーミングデータを逐次処理するためのリーダーを確立
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
         const textEditor = document.getElementById('current-text');
-        textEditor.value += "\n" + data.generated_text;
         
-        appendLog(`[SUCCESS] 新しい描写を肉付けしました（+${data.generated_text.length}文字）`);
+        let buffer = "";
+        textEditor.value += "\n"; // 生成テキストの前に改行を入れる
+        
+        appendLog("[STREAM] 接続確立。執筆をリアルタイムで同期中...");
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            
+            // バッファにデータを追加し、改行コードで1行ずつパース
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); // 未完成の最後の1行を退避
+            
+            for (const line of lines) {
+                if (line.trim() === "") continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.error) {
+                        appendLog(`[ERROR] AI生成中にエラー: ${parsed.error}`);
+                        continue;
+                    }
+                    // テキストエリアにリアルタイムで追記してスクロール
+                    textEditor.value += parsed.text;
+                    textEditor.scrollTop = textEditor.scrollHeight;
+                    generateBtn.innerText = "✦ カタカタと肉付け中...";
+                } catch (e) {
+                    console.error("JSONパースエラー:", e);
+                }
+            }
+        }
+        appendLog(`[SUCCESS] 肉付け完了。`);
     } catch (error) {
-        appendLog(`[ERROR] 生成失敗: ${error}`);
+        appendLog(`[ERROR] 生成通信失敗: ${error}`);
     } finally {
         generateBtn.disabled = false;
         generateBtn.innerText = "✦ 次の展開を肉付け（生成）";
