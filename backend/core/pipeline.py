@@ -1,48 +1,46 @@
-# backend/core/pipeline.py
+# backend/core/pipeline.py （完全上書き用）
 from typing import List, Dict
 
-class ContextSynthesizer:
-    @staticmethod
-    def synthesize(
+class NovelPipeline:
+    def __init__(self):
+        pass
+
+    def build_prompt(
+        self,
         global_goal: str,
         current_chapter: str,
         immediate_instruction: str,
         current_text: str,
         selected_assets: List[str],
-        assets_master: Dict[str, str]
+        assets: Dict[str, str]
     ) -> str:
-        """
-        ユーザーの設定（アセット）とプロット（パイプライン）を調合し、
-        ローカルLLMに最適化されたXML構造のプロンプトを生成する。
-        """
-        # 1. 有効化されたアセットの選別とテキスト化
-        filtered_assets_str = ""
-        for key in selected_assets:
-            # キャラクターシート、または世界観設定から該当するものを抽出
-            if key in assets_master:
-                filtered_assets_str += f'<asset name="{key}">\n{assets_master[key]}\n</asset>\n'
+        """フロントエンドから受け取った情報を元に、Ollama(Gemma4)向けのプロンプトを構築する"""
+        
+        # 選択された設定（アセット）のテキストを抽出
+        asset_context = ""
+        if selected_assets:
+            asset_context = "\n【採用する設定・世界観】\n"
+            for asset_name in selected_assets:
+                if asset_name in assets:
+                    asset_context += f"- {asset_name}: {assets[asset_name]}\n"
 
-        # 2. トップダウン型XMLプロンプトの成形
-        prompt = f"""<system_instruction>
-あなたはプロの小説家です。提示された[世界観・キャラクター設定]と[展開のノルマ]を絶対に遵守し、登場人物の行動や心理描写に矛盾がないように、次の展開を肉付けして記述してください。
-余計な解説や「はい、分かりました」といった挨拶、メタ発言（XMLタグの出力など）は一切含めず、純粋な小説の本文（続きの文章）のみを出力してください。
-</system_instruction>
+        # プロンプト（指示書）の組み立て
+        prompt = f"""以下の設定および執筆指示に従い、小説の続き、または指定された描写の肉付けを執筆してください。
 
-<global_goal>
+【作品の全体目標・着地点】
 {global_goal}
-</global_goal>
 
-<current_plan>
-【今章の目標】 {current_chapter}
-【このシーンでのノルマ】 {immediate_instruction}
-</current_plan>
-
-<filtered_settings>
-{filtered_assets_str}
-</filtered_settings>
-
-<current_text>
+【現在の章の目標・あらすじ】
+{current_chapter}
+{asset_context}
+【現在の本文（この続きを執筆、または修正してください）】
+\"\"\"
 {current_text}
-</current_text>
-"""
+\"\"\"
+
+【今すぐ行う執筆指示】
+{immediate_instruction}
+
+それでは、上記の指示を完全に反映し、前後の文脈やキャラクターの設定を崩さないよう、臨場感のある地の文とセリフで小説を書き進めてください。"""
+        
         return prompt
